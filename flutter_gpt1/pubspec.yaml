@@ -33,6 +33,7 @@ dependencies:
   path_provider: ^2.0.9
   image_picker: ^0.8.4+7
   permission_handler: ^10.2.0
+  shared_preferences: ^2.0.10
 
 
 

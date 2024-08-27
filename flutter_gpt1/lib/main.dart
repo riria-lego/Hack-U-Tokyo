@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(TimetableApp());
@@ -14,7 +16,39 @@ class Subject {
   TimeOfDay startTime;
   TimeOfDay endTime;
 
-  Subject({required this.name, required this.day, required this.startTime, required this.endTime});
+  Subject({
+    required this.name,
+    required this.day,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  // JSONへの変換メソッド
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'day': day,
+    'startTime': _timeOfDayToString(startTime),
+    'endTime': _timeOfDayToString(endTime),
+  };
+
+  // JSONからの生成メソッド
+  static Subject fromJson(Map<String, dynamic> json) => Subject(
+    name: json['name'],
+    day: json['day'],
+    startTime: _stringToTimeOfDay(json['startTime']),
+    endTime: _stringToTimeOfDay(json['endTime']),
+  );
+
+  static String _timeOfDayToString(TimeOfDay time) =>
+      '${time.hour}:${time.minute}';
+
+  static TimeOfDay _stringToTimeOfDay(String timeString) {
+    final parts = timeString.split(':');
+    return TimeOfDay(
+      hour: int.parse(parts[0]),
+      minute: int.parse(parts[1]),
+    );
+  }
 }
 
 class TimetableApp extends StatelessWidget {
@@ -48,14 +82,39 @@ class _TimetableScreenState extends State<TimetableScreen> {
   };
 
   @override
+  void initState() {
+    super.initState();
+    _loadSubjects();  // データを読み込む
+  }
+
+  // 教科データを保存するメソッド
+  Future<void> _saveSubjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    final subjectList = subjects.map((subject) => subject.toJson()).toList();
+    prefs.setString('subjects', jsonEncode(subjectList));
+  }
+
+  // 教科データを読み込むメソッド
+  Future<void> _loadSubjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    final subjectString = prefs.getString('subjects');
+    if (subjectString != null) {
+      final List<dynamic> subjectList = jsonDecode(subjectString);
+      setState(() {
+        subjects.clear();
+        subjects.addAll(subjectList.map((json) => Subject.fromJson(json)).toList());
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // 教科リストを曜日と時間でソート
     subjects.sort((a, b) {
       int dayComparison = _getDayOrder(a.day).compareTo(_getDayOrder(b.day));
       if (dayComparison != 0) {
         return dayComparison;
       }
-      return a.startTime.hour * 60 + a.startTime.minute - b.startTime.hour * 60 - b.startTime.minute;
+      return a.startTime.hour * 60 + a.startTime.minute - b.startTime.hour * 60 + b.startTime.minute;
     });
 
     Map<String, List<Subject>> subjectsByDay = {};
@@ -96,6 +155,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       onPressed: () {
                         setState(() {
                           subjects.remove(subject);
+                          _saveSubjects();  // 削除後に保存
                         });
                       },
                     ),
@@ -107,7 +167,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
         }).toList(),
       ),
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(left: 30.0), // 余白を追加
+        padding: const EdgeInsets.only(left: 30.0),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -247,6 +307,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     if (result != null) {
       setState(() {
         subjects.add(result);
+        _saveSubjects();  // 追加後に保存
       });
       _createSubjectFolder(result); // 教科フォルダを生成
     }
@@ -359,6 +420,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     if (result != null) {
       setState(() {
         subjects[index] = result;
+        _saveSubjects();  // 更新後に保存
       });
       _createSubjectFolder(result); // フォルダ名が変わるかもしれないので、再作成
     }
@@ -418,7 +480,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
       ),
     );
   }
-
 
   int _getDayOrder(String day) {
     switch (day) {
@@ -482,8 +543,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 }
 
-// WeekdaySelectorScreenクラスとそのサブスクリーンを定義します。
-
+// WeekdaySelectorScreenクラスの定義
 class WeekdaySelectorScreen extends StatelessWidget {
   final List<Subject> subjects;
   final Map<String, Color> dayColors;
@@ -530,6 +590,7 @@ class WeekdaySelectorScreen extends StatelessWidget {
   }
 }
 
+// FolderListScreenクラスの定義
 class FolderListScreen extends StatefulWidget {
   final List<Subject> subjects; // subjectsを受け取るように変更
   final String day;
@@ -590,6 +651,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
   }
 }
 
+// ImageListScreenクラスの定義
 class ImageListScreen extends StatefulWidget {
   final Directory subjectDir;
 
@@ -649,6 +711,7 @@ class _ImageListScreenState extends State<ImageListScreen> {
   }
 }
 
+// ImageDetailScreenクラスの定義
 class ImageDetailScreen extends StatelessWidget {
   final File imageFile;
   final VoidCallback onDelete;
